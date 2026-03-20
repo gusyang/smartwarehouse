@@ -38,15 +38,30 @@ const cityCoordinates: Record<string, { lat: number; lon: number }> = {
   'detroit': { lat: 42.3314, lon: -83.0458 },
 }
 
-function getCoordinates(address: string): { lat: number; lon: number } | null {
+export function getCoordinates(address: string): { lat: number; lon: number } | null {
   const normalizedAddress = address.toLowerCase().trim()
   
+  let baseCoords = null
   for (const [city, coords] of Object.entries(cityCoordinates)) {
     if (normalizedAddress.includes(city)) {
-      return coords
+      baseCoords = { ...coords }
+      break
     }
   }
   
+  if (baseCoords) {
+    // Generate a deterministic offset based on the exact address string to simulate street-level accuracy
+    let hash = 0
+    for (let i = 0; i < normalizedAddress.length; i++) {
+      hash = ((hash << 5) - hash) + normalizedAddress.charCodeAt(i)
+      hash = hash & hash
+    }
+    // Create a pseudo-random but consistent offset between -0.2 and 0.2 degrees (roughly +/- 10-15 miles)
+    const latOffset = ((Math.abs(hash) % 400) / 1000) - 0.2
+    const lonOffset = ((Math.abs(hash >> 2) % 400) / 1000) - 0.2
+    return { lat: baseCoords.lat + latOffset, lon: baseCoords.lon + lonOffset }
+  }
+
   return null
 }
 

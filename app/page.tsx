@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { useWarehouseStore } from "@/lib/store"
-import { Warehouse, Building2, Package, Truck, Plus, Trash2, Check } from "lucide-react"
+import { Warehouse, Building2, Package, Truck, Plus, Trash2, Check, Pencil, X } from "lucide-react"
 
 export default function MasterDataPage() {
   const store = useWarehouseStore()
@@ -24,6 +24,12 @@ export default function MasterDataPage() {
   const [newSku, setNewSku] = useState<{ skuCode: string, name: string, lengthIn: number, widthIn: number, heightIn: number, weightLbs: number, unitType: "each" | "case" | "pallet" }>({ skuCode: "", name: "", lengthIn: 12, widthIn: 8, heightIn: 6, weightLbs: 5, unitType: "each" })
   const [newCarrier, setNewCarrier] = useState<{ name: string, mode: "FTL" | "LTL" | "Container", description: string }>({ name: "", mode: "FTL", description: "" })
   const [newRate, setNewRate] = useState({ carrierId: "", minDistance: 0, maxDistance: 500, ratePerMile: 2.5, minimumCharge: 200, fixedCost: 50 })
+
+  const [editingWarehouseId, setEditingWarehouseId] = useState<string | null>(null)
+  const [editingDCId, setEditingDCId] = useState<string | null>(null)
+  const [editingSkuId, setEditingSkuId] = useState<string | null>(null)
+  const [editingCarrierId, setEditingCarrierId] = useState<string | null>(null)
+  const [editingRateId, setEditingRateId] = useState<string | null>(null)
 
   const showSuccess = (msg: string) => {
     setSuccessMessage(msg)
@@ -80,7 +86,7 @@ export default function MasterDataPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Address</TableHead>
                     <TableHead className="text-right">Capacity</TableHead>
-                    <TableHead className="w-[80px]">Actions</TableHead>
+                    <TableHead className="w-[100px] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -89,10 +95,18 @@ export default function MasterDataPage() {
                       <TableCell className="font-medium">{wh.name}</TableCell>
                       <TableCell className="text-muted-foreground">{wh.address}</TableCell>
                       <TableCell className="text-right">{wh.capacity.toLocaleString()}</TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => store.deleteWarehouse(wh.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => {
+                            setEditingWarehouseId(wh.id)
+                            setNewWarehouse({ name: wh.name, address: wh.address, capacity: wh.capacity })
+                          }}>
+                            <Pencil className="h-4 w-4 text-blue-500" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => store.deleteWarehouse(wh.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -109,7 +123,7 @@ export default function MasterDataPage() {
 
               <Card className="bg-muted/30 border-dashed">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm">Add New Warehouse</CardTitle>
+                  <CardTitle className="text-sm">{editingWarehouseId ? "Edit Warehouse" : "Add New Warehouse"}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-4 gap-4">
@@ -138,18 +152,38 @@ export default function MasterDataPage() {
                       />
                     </div>
                   </div>
-                  <Button 
-                    className="mt-4" 
-                    onClick={() => {
-                      if (newWarehouse.name && newWarehouse.address) {
-                        store.addWarehouse({ id: Date.now().toString(), ...newWarehouse })
-                        setNewWarehouse({ name: "", address: "", capacity: 10000 })
-                        showSuccess("Warehouse added successfully")
-                      }
-                    }}
-                  >
-                    <Plus className="h-4 w-4 mr-2" /> Add Warehouse
-                  </Button>
+                  <div className="mt-4 flex gap-2">
+                    {editingWarehouseId ? (
+                      <>
+                        <Button onClick={() => {
+                          if (newWarehouse.name && newWarehouse.address) {
+                            store.updateWarehouse(editingWarehouseId, newWarehouse)
+                            setEditingWarehouseId(null)
+                            setNewWarehouse({ name: "", address: "", capacity: 10000 })
+                            showSuccess("Warehouse updated successfully")
+                          }
+                        }}>
+                          <Check className="h-4 w-4 mr-2" /> Update Warehouse
+                        </Button>
+                        <Button variant="outline" onClick={() => {
+                          setEditingWarehouseId(null)
+                          setNewWarehouse({ name: "", address: "", capacity: 10000 })
+                        }}>
+                          <X className="h-4 w-4 mr-2" /> Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <Button onClick={() => {
+                        if (newWarehouse.name && newWarehouse.address) {
+                          store.addWarehouse({ id: Date.now().toString(), ...newWarehouse })
+                          setNewWarehouse({ name: "", address: "", capacity: 10000 })
+                          showSuccess("Warehouse added successfully")
+                        }
+                      }}>
+                        <Plus className="h-4 w-4 mr-2" /> Add Warehouse
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </CardContent>
@@ -170,7 +204,7 @@ export default function MasterDataPage() {
                     <TableHead>Channel</TableHead>
                     <TableHead>State</TableHead>
                     <TableHead>Address</TableHead>
-                    <TableHead className="w-[80px]">Actions</TableHead>
+                    <TableHead className="w-[100px] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -181,10 +215,18 @@ export default function MasterDataPage() {
                       </TableCell>
                       <TableCell>{dc.state}</TableCell>
                       <TableCell className="text-muted-foreground">{dc.address}</TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => store.deleteDistributionCenter(dc.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => {
+                            setEditingDCId(dc.id)
+                            setNewDC({ channel: dc.channel, state: dc.state, address: dc.address })
+                          }}>
+                            <Pencil className="h-4 w-4 text-blue-500" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => store.deleteDistributionCenter(dc.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -193,7 +235,7 @@ export default function MasterDataPage() {
 
               <Card className="bg-muted/30 border-dashed">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm">Add New Distribution Center</CardTitle>
+                  <CardTitle className="text-sm">{editingDCId ? "Edit Distribution Center" : "Add New Distribution Center"}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-4 gap-4">
@@ -222,18 +264,38 @@ export default function MasterDataPage() {
                       />
                     </div>
                   </div>
-                  <Button 
-                    className="mt-4"
-                    onClick={() => {
-                      if (newDC.channel && newDC.state && newDC.address) {
-                        store.addDistributionCenter({ id: Date.now().toString(), ...newDC })
-                        setNewDC({ channel: "", state: "", address: "" })
-                        showSuccess("Distribution Center added successfully")
-                      }
-                    }}
-                  >
-                    <Plus className="h-4 w-4 mr-2" /> Add DC
-                  </Button>
+                  <div className="mt-4 flex gap-2">
+                    {editingDCId ? (
+                      <>
+                        <Button onClick={() => {
+                          if (newDC.channel && newDC.state && newDC.address) {
+                            store.updateDistributionCenter(editingDCId, newDC)
+                            setEditingDCId(null)
+                            setNewDC({ channel: "", state: "", address: "" })
+                            showSuccess("Distribution Center updated successfully")
+                          }
+                        }}>
+                          <Check className="h-4 w-4 mr-2" /> Update DC
+                        </Button>
+                        <Button variant="outline" onClick={() => {
+                          setEditingDCId(null)
+                          setNewDC({ channel: "", state: "", address: "" })
+                        }}>
+                          <X className="h-4 w-4 mr-2" /> Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <Button onClick={() => {
+                        if (newDC.channel && newDC.state && newDC.address) {
+                          store.addDistributionCenter({ id: Date.now().toString(), ...newDC })
+                          setNewDC({ channel: "", state: "", address: "" })
+                          showSuccess("Distribution Center added successfully")
+                        }
+                      }}>
+                        <Plus className="h-4 w-4 mr-2" /> Add DC
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </CardContent>
@@ -257,7 +319,7 @@ export default function MasterDataPage() {
                     <TableHead className="text-right">Weight</TableHead>
                     <TableHead className="text-right">Dim Weight</TableHead>
                     <TableHead>Unit</TableHead>
-                    <TableHead className="w-[80px]">Actions</TableHead>
+                    <TableHead className="w-[100px] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -275,10 +337,18 @@ export default function MasterDataPage() {
                         <TableCell>
                           <Badge variant="secondary">{sku.unitType}</Badge>
                         </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="icon" onClick={() => store.deleteSku(sku.id)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => {
+                              setEditingSkuId(sku.id)
+                              setNewSku({ skuCode: sku.skuCode, name: sku.name, lengthIn: sku.lengthIn, widthIn: sku.widthIn, heightIn: sku.heightIn, weightLbs: sku.weightLbs, unitType: sku.unitType })
+                            }}>
+                              <Pencil className="h-4 w-4 text-blue-500" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => store.deleteSku(sku.id)}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
@@ -288,7 +358,7 @@ export default function MasterDataPage() {
 
               <Card className="bg-muted/30 border-dashed">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm">Add New SKU</CardTitle>
+                  <CardTitle className="text-sm">{editingSkuId ? "Edit SKU" : "Add New SKU"}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-4 gap-4">
@@ -354,18 +424,38 @@ export default function MasterDataPage() {
                       </Select>
                     </div>
                   </div>
-                  <Button 
-                    className="mt-4"
-                    onClick={() => {
-                      if (newSku.skuCode && newSku.name) {
-                        store.addSku({ id: Date.now().toString(), ...newSku })
-                        setNewSku({ skuCode: "", name: "", lengthIn: 12, widthIn: 8, heightIn: 6, weightLbs: 5, unitType: "each" })
-                        showSuccess("SKU added successfully")
-                      }
-                    }}
-                  >
-                    <Plus className="h-4 w-4 mr-2" /> Add SKU
-                  </Button>
+                  <div className="mt-4 flex gap-2">
+                    {editingSkuId ? (
+                      <>
+                        <Button onClick={() => {
+                          if (newSku.skuCode && newSku.name) {
+                            store.updateSku(editingSkuId, newSku)
+                            setEditingSkuId(null)
+                            setNewSku({ skuCode: "", name: "", lengthIn: 12, widthIn: 8, heightIn: 6, weightLbs: 5, unitType: "each" })
+                            showSuccess("SKU updated successfully")
+                          }
+                        }}>
+                          <Check className="h-4 w-4 mr-2" /> Update SKU
+                        </Button>
+                        <Button variant="outline" onClick={() => {
+                          setEditingSkuId(null)
+                          setNewSku({ skuCode: "", name: "", lengthIn: 12, widthIn: 8, heightIn: 6, weightLbs: 5, unitType: "each" })
+                        }}>
+                          <X className="h-4 w-4 mr-2" /> Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <Button onClick={() => {
+                        if (newSku.skuCode && newSku.name) {
+                          store.addSku({ id: Date.now().toString(), ...newSku })
+                          setNewSku({ skuCode: "", name: "", lengthIn: 12, widthIn: 8, heightIn: 6, weightLbs: 5, unitType: "each" })
+                          showSuccess("SKU added successfully")
+                        }
+                      }}>
+                        <Plus className="h-4 w-4 mr-2" /> Add SKU
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </CardContent>
@@ -389,7 +479,7 @@ export default function MasterDataPage() {
                       <TableHead>Name</TableHead>
                       <TableHead>Mode</TableHead>
                       <TableHead>Description</TableHead>
-                      <TableHead className="w-[80px]">Actions</TableHead>
+                      <TableHead className="w-[100px] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -400,10 +490,18 @@ export default function MasterDataPage() {
                           <Badge variant="outline">{carrier.mode}</Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground">{carrier.description}</TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="icon" onClick={() => store.deleteCarrier(carrier.id)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => {
+                              setEditingCarrierId(carrier.id)
+                              setNewCarrier({ name: carrier.name, mode: carrier.mode, description: carrier.description })
+                            }}>
+                              <Pencil className="h-4 w-4 text-blue-500" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => store.deleteCarrier(carrier.id)}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -412,6 +510,11 @@ export default function MasterDataPage() {
 
                 <Card className="bg-muted/30 border-dashed mt-4">
                   <CardContent className="pt-4">
+                    {editingCarrierId && (
+                      <div className="mb-4 text-sm font-medium text-blue-500 flex items-center gap-2">
+                        <Pencil className="h-4 w-4" /> Editing Carrier
+                      </div>
+                    )}
                     <div className="grid grid-cols-4 gap-4">
                       <div className="space-y-2">
                         <Label>Name</Label>
@@ -443,18 +546,38 @@ export default function MasterDataPage() {
                         />
                       </div>
                     </div>
-                    <Button 
-                      className="mt-4"
-                      onClick={() => {
-                        if (newCarrier.name) {
-                          store.addCarrier({ id: Date.now().toString(), ...newCarrier })
-                          setNewCarrier({ name: "", mode: "FTL", description: "" })
-                          showSuccess("Carrier added successfully")
-                        }
-                      }}
-                    >
-                      <Plus className="h-4 w-4 mr-2" /> Add Carrier
-                    </Button>
+                    <div className="mt-4 flex gap-2">
+                      {editingCarrierId ? (
+                        <>
+                          <Button onClick={() => {
+                            if (newCarrier.name) {
+                              store.updateCarrier(editingCarrierId, newCarrier)
+                              setEditingCarrierId(null)
+                              setNewCarrier({ name: "", mode: "FTL", description: "" })
+                              showSuccess("Carrier updated successfully")
+                            }
+                          }}>
+                            <Check className="h-4 w-4 mr-2" /> Update Carrier
+                          </Button>
+                          <Button variant="outline" onClick={() => {
+                            setEditingCarrierId(null)
+                            setNewCarrier({ name: "", mode: "FTL", description: "" })
+                          }}>
+                            <X className="h-4 w-4 mr-2" /> Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <Button onClick={() => {
+                          if (newCarrier.name) {
+                            store.addCarrier({ id: Date.now().toString(), ...newCarrier })
+                            setNewCarrier({ name: "", mode: "FTL", description: "" })
+                            showSuccess("Carrier added successfully")
+                          }
+                        }}>
+                          <Plus className="h-4 w-4 mr-2" /> Add Carrier
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -470,7 +593,7 @@ export default function MasterDataPage() {
                       <TableHead className="text-right">$/Mile</TableHead>
                       <TableHead className="text-right">Min Charge</TableHead>
                       <TableHead className="text-right">Fixed Cost</TableHead>
-                      <TableHead className="w-[80px]">Actions</TableHead>
+                      <TableHead className="w-[100px] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -483,10 +606,18 @@ export default function MasterDataPage() {
                           <TableCell className="text-right font-mono">${rate.ratePerMile.toFixed(2)}</TableCell>
                           <TableCell className="text-right font-mono">${rate.minimumCharge}</TableCell>
                           <TableCell className="text-right font-mono">${rate.fixedCost}</TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="icon" onClick={() => store.deleteRate(rate.id)}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="icon" onClick={() => {
+                                setEditingRateId(rate.id)
+                                setNewRate({ carrierId: rate.carrierId, minDistance: rate.minDistance, maxDistance: rate.maxDistance, ratePerMile: rate.ratePerMile, minimumCharge: rate.minimumCharge, fixedCost: rate.fixedCost })
+                              }}>
+                                <Pencil className="h-4 w-4 text-blue-500" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={() => store.deleteRate(rate.id)}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       )
@@ -496,6 +627,11 @@ export default function MasterDataPage() {
 
                 <Card className="bg-muted/30 border-dashed mt-4">
                   <CardContent className="pt-4">
+                    {editingRateId && (
+                      <div className="mb-4 text-sm font-medium text-blue-500 flex items-center gap-2">
+                        <Pencil className="h-4 w-4" /> Editing Rate
+                      </div>
+                    )}
                     <div className="grid grid-cols-6 gap-4">
                       <div className="space-y-2">
                         <Label>Carrier</Label>
@@ -552,19 +688,40 @@ export default function MasterDataPage() {
                         />
                       </div>
                     </div>
-                    <Button 
-                      className="mt-4"
-                      onClick={() => {
-                        if (newRate.carrierId) {
-                          const carrier = store.carriers.find(c => c.id === newRate.carrierId)
-                          store.addRate({ id: Date.now().toString(), carrierName: carrier?.name || "Unknown", mode: carrier?.mode || "FTL", ...newRate })
-                          setNewRate({ carrierId: "", minDistance: 0, maxDistance: 500, ratePerMile: 2.5, minimumCharge: 200, fixedCost: 50 })
-                          showSuccess("Rate added successfully")
-                        }
-                      }}
-                    >
-                      <Plus className="h-4 w-4 mr-2" /> Add Rate
-                    </Button>
+                    <div className="mt-4 flex gap-2">
+                      {editingRateId ? (
+                        <>
+                          <Button onClick={() => {
+                            if (newRate.carrierId) {
+                              const carrier = store.carriers.find(c => c.id === newRate.carrierId)
+                              store.updateRate(editingRateId, { carrierName: carrier?.name || "Unknown", mode: carrier?.mode || "FTL", ...newRate })
+                              setEditingRateId(null)
+                              setNewRate({ carrierId: "", minDistance: 0, maxDistance: 500, ratePerMile: 2.5, minimumCharge: 200, fixedCost: 50 })
+                              showSuccess("Rate updated successfully")
+                            }
+                          }}>
+                            <Check className="h-4 w-4 mr-2" /> Update Rate
+                          </Button>
+                          <Button variant="outline" onClick={() => {
+                            setEditingRateId(null)
+                            setNewRate({ carrierId: "", minDistance: 0, maxDistance: 500, ratePerMile: 2.5, minimumCharge: 200, fixedCost: 50 })
+                          }}>
+                            <X className="h-4 w-4 mr-2" /> Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <Button onClick={() => {
+                          if (newRate.carrierId) {
+                            const carrier = store.carriers.find(c => c.id === newRate.carrierId)
+                            store.addRate({ id: Date.now().toString(), carrierName: carrier?.name || "Unknown", mode: carrier?.mode || "FTL", ...newRate })
+                            setNewRate({ carrierId: "", minDistance: 0, maxDistance: 500, ratePerMile: 2.5, minimumCharge: 200, fixedCost: 50 })
+                            showSuccess("Rate added successfully")
+                          }
+                        }}>
+                          <Plus className="h-4 w-4 mr-2" /> Add Rate
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               </div>

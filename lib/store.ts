@@ -238,10 +238,10 @@ const defaultWarehouses: Warehouse[] = [
 ]
 
 const defaultDistributionCenters: DistributionCenter[] = [
-  { id: '1', channel: 'Amazon', state: 'CA', address: 'San Francisco, CA' },
-  { id: '2', channel: 'Walmart', state: 'TX', address: 'Dallas, TX' },
-  { id: '3', channel: 'Target', state: 'GA', address: 'Atlanta, GA' },
-  { id: '4', channel: 'Amazon', state: 'PA', address: 'Philadelphia, PA' },
+  { id: '1', channel: 'Amazon', state: 'CA', address: '123 Market St, San Francisco, CA 94105' },
+  { id: '2', channel: 'Walmart', state: 'TX', address: '456 Commerce Blvd, Dallas, TX 75201' },
+  { id: '3', channel: 'Target', state: 'GA', address: '789 Logistics Way, Atlanta, GA 30301' },
+  { id: '4', channel: 'Amazon', state: 'PA', address: '101 Fulfillment Dr, Philadelphia, PA 19101' },
 ]
 
 const defaultSkus: SKU[] = [
