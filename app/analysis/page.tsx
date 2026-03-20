@@ -19,6 +19,9 @@ import {
   RefreshCw,
   Map as MapIcon,
   Database,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +52,141 @@ import type { AllocationResult } from "@/lib/store"
 const CHART_COLORS = {
   customer: "#e46b08", // Slate 500 - Baseline
   smart: "#0cdfb1",    // Blue 500 - Optimized
+}
+
+const InteractiveRouteMap = ({ links, lineColor, title, totalCost, warehouses, distributionCenters }: any) => {
+  const [scale, setScale] = useState(1)
+  const [position, setPosition] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+
+  const getX = (lon: number) => ((lon - (-128)) / (-65 - (-128))) * 1000
+  const getY = (lat: number) => 600 - ((lat - 24) / (50 - 24)) * 600
+
+  const totalMiles = links.reduce((sum: number, link: any) => sum + link.distance, 0)
+
+  const activeWhs = new Set(links.map((l: any) => l.source))
+  const whNodes = new Map()
+  warehouses.forEach((wh: any) => {
+    const coords = getCoordinates(wh.address) || { lat: 39.8, lon: -98.5 }
+    whNodes.set(wh.name, { id: wh.id, name: wh.name, x: getX(coords.lon), y: getY(coords.lat), active: activeWhs.has(wh.name) })
+  })
+
+  const dcNodes = new Map()
+  distributionCenters.forEach((dc: any) => {
+    const coords = getCoordinates(dc.address) || { lat: 39.8, lon: -98.5 }
+    const dcId = `${dc.channel}-${dc.state}`
+    dcNodes.set(dcId, { id: dcId, name: `${dc.channel} (${dc.state})`, x: getX(coords.lon), y: getY(coords.lat) })
+  })
+
+  const backgroundCities = [
+    { name: "Seattle", lat: 47.6062, lon: -122.3321 }, { name: "Portland", lat: 45.5152, lon: -122.6784 },
+    { name: "San Francisco", lat: 37.7749, lon: -122.4194 }, { name: "Los Angeles", lat: 34.0522, lon: -118.2437 },
+    { name: "San Diego", lat: 32.7157, lon: -117.1611 }, { name: "Las Vegas", lat: 36.1699, lon: -115.1398 },
+    { name: "Phoenix", lat: 33.4484, lon: -112.0740 }, { name: "Salt Lake City", lat: 40.7608, lon: -111.8910 },
+    { name: "Denver", lat: 39.7392, lon: -104.9903 }, { name: "Dallas", lat: 32.7767, lon: -96.7970 },
+    { name: "Austin", lat: 30.2672, lon: -97.7431 }, { name: "Houston", lat: 29.7604, lon: -95.3698 },
+    { name: "New Orleans", lat: 29.9511, lon: -90.0715 }, { name: "Chicago", lat: 41.8781, lon: -87.6298 },
+    { name: "Minneapolis", lat: 44.9778, lon: -93.2650 }, { name: "Detroit", lat: 42.3314, lon: -83.0458 },
+    { name: "Atlanta", lat: 33.749, lon: -84.388 }, { name: "Charlotte", lat: 35.2271, lon: -80.8431 },
+    { name: "Miami", lat: 25.7617, lon: -80.1918 }, { name: "Orlando", lat: 28.5383, lon: -81.3792 },
+    { name: "Washington DC", lat: 38.9072, lon: -77.0369 }, { name: "Philadelphia", lat: 39.9526, lon: -75.1652 },
+    { name: "New York", lat: 40.7128, lon: -74.0060 }, { name: "Boston", lat: 42.3601, lon: -71.0589 }
+  ]
+
+  return (
+    <Card className="bg-card border-border overflow-hidden shadow-sm flex flex-col relative group">
+      <CardHeader className="pb-3 border-b bg-muted/10 flex flex-row items-center justify-between space-y-0 z-30">
+        <CardTitle className="text-base flex items-center gap-2">
+          <MapIcon className="h-4 w-4" style={{ color: lineColor }} /> {title}
+        </CardTitle>
+        <div className="flex gap-4 text-sm mt-0 items-center">
+          <div className="text-right">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Route Miles</p>
+            <p className="font-mono font-medium leading-none">{totalMiles.toLocaleString(undefined, { maximumFractionDigits: 0 })} mi</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Total Cost</p>
+            <p className="font-mono font-bold leading-none" style={{ color: lineColor }}>${totalCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+          </div>
+        </div>
+      </CardHeader>
+
+      <div className="absolute top-20 right-3 flex flex-col gap-1 z-40 opacity-0 group-hover:opacity-100 transition-opacity">
+        <Button variant="secondary" size="icon" className="h-8 w-8 bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700" onClick={() => setScale(s => Math.min(s + 0.5, 4))}>
+          <ZoomIn className="h-4 w-4" />
+        </Button>
+        <Button variant="secondary" size="icon" className="h-8 w-8 bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700" onClick={() => setScale(s => Math.max(s - 0.5, 1))}>
+          <ZoomOut className="h-4 w-4" />
+        </Button>
+        <Button variant="secondary" size="icon" className="h-8 w-8 bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700" onClick={() => { setScale(1); setPosition({ x: 0, y: 0 }) }}>
+          <Maximize className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="relative w-full h-[400px] bg-[#0B1120] overflow-hidden">
+        <div 
+          className={`absolute inset-0 z-30 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          onMouseDown={(e) => { setIsDragging(true); setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y }) }}
+          onMouseMove={(e) => { if (isDragging) setPosition({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }) }}
+          onMouseUp={() => setIsDragging(false)}
+          onMouseLeave={() => setIsDragging(false)}
+        />
+
+        <div 
+          className="absolute inset-0 w-full h-full pointer-events-none"
+          style={{ transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`, transformOrigin: 'center', transition: isDragging ? 'none' : 'transform 0.2s ease-out' }}
+        >
+          <div className="absolute inset-0 opacity-50" style={{
+            backgroundImage: 'url("https://upload.wikimedia.org/wikipedia/commons/1/1a/Blank_US_Map_%28states_only%29.svg")',
+            backgroundSize: '100% 100%', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
+            filter: 'invert(1) hue-rotate(210deg) brightness(0.8) contrast(1.2) drop-shadow(0 0 5px rgba(59,130,246,0.3))'
+          }} />
+          <svg viewBox="0 0 1000 600" className="absolute inset-0 w-full h-full z-10" preserveAspectRatio="none">
+            {backgroundCities.map((city, i) => (
+              <g key={`bg-city-${i}`} transform={`translate(${getX(city.lon)},${getY(city.lat)})`}>
+                <circle r="3" fill="#1e293b" />
+                <text y="-6" fontSize="11" fill="#475569" textAnchor="middle" className="font-medium tracking-tight" style={{ paintOrder: 'stroke', stroke: '#0f172a', strokeWidth: '2px' }}>{city.name}</text>
+              </g>
+            ))}
+            {links.map((link: any, i: number) => {
+              const s = whNodes.get(link.source); const t = dcNodes.get(link.target); if (!s || !t) return null
+              const dist = Math.sqrt(Math.pow(t.x - s.x, 2) + Math.pow(t.y - s.y, 2)); const cx = (s.x + t.x) / 2; const cy = Math.min(s.y, t.y) - dist * 0.15
+              const pathData = `M ${s.x} ${s.y} Q ${cx} ${cy} ${t.x} ${t.y}`; const strokeW = Math.max(2, Math.min(6, link.units / 800))
+              return (
+                <g key={`link-${i}`}>
+                  <path d={pathData} fill="none" stroke={lineColor} strokeWidth={strokeW} strokeOpacity="0.7" strokeLinecap="round" />
+                  <circle r={strokeW * 0.8} fill="#ffffff" opacity="0.8"><animateMotion dur="2.5s" repeatCount="indefinite" path={pathData} /></circle>
+                </g>
+              )
+            })}
+            {Array.from(dcNodes.values()).map(node => (
+              <g key={`dc-${node.id}`} transform={`translate(${node.x},${node.y})`}>
+                <ellipse cx="0" cy="2" rx="6" ry="2" fill="rgba(0,0,0,0.5)" />
+                <path d="M0,0 C-6,-8 -9,-12 -9,-16 A9,9 0 1,1 9,-16 C9,-12 6,-8 0,0 Z" fill="#ef4444" stroke="#0f172a" strokeWidth="1" />
+                <text y="14" fontSize="11" fill="#e2e8f0" textAnchor="middle" className="font-bold tracking-tight" style={{ paintOrder: 'stroke', stroke: '#0f172a', strokeWidth: '3px' }}>{node.name}</text>
+              </g>
+            ))}
+            {Array.from(whNodes.values()).map(node => (
+              <g key={`wh-${node.id}`} transform={`translate(${node.x},${node.y})`}>
+                <ellipse cx="0" cy="2" rx="8" ry="3" fill="rgba(0,0,0,0.5)" />
+                <path d="M0,0 C-8,-10 -12,-15 -12,-20 A12,12 0 1,1 12,-20 C12,-15 8,-10 0,0 Z" fill={node.active ? "#22c55e" : "#334155"} stroke="#0f172a" strokeWidth="1.5" />
+                <text y="-25" fontSize="12" fill={node.active ? "#f8fafc" : "#64748b"} textAnchor="middle" className="font-bold tracking-wide" style={{ paintOrder: 'stroke', stroke: '#0f172a', strokeWidth: '3px' }}>{node.name}</text>
+              </g>
+            ))}
+          </svg>
+        </div>
+        <div className="absolute bottom-3 left-3 text-xs flex flex-col gap-2 bg-slate-900/90 text-slate-300 p-3 rounded border border-slate-800 shadow-xl backdrop-blur-sm pointer-events-none z-40">
+          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#22c55e] rounded-[2px] border border-[#0f172a]"></div> Active WH</div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#ef4444] rounded-full border border-[#0f172a]"></div> Destination DC</div>
+          <div className="flex items-center gap-2 mt-1">
+            <div className="w-6 h-1 rounded-full relative overflow-hidden" style={{ backgroundColor: lineColor }}><div className="absolute top-0 bottom-0 w-2 bg-white/70 animate-ping"></div></div>
+            Active Route
+          </div>
+        </div>
+      </div>
+    </Card>
+  )
 }
 
 export default function AnalysisPage() {
@@ -161,10 +299,11 @@ export default function AnalysisPage() {
 
   // Create side-by-side comparison data
   const createComparisonData = (customerAlloc: AllocationResult[] | null, smartAlloc: AllocationResult[] | null) => {
-    if (!customerAlloc || !smartAlloc) return []
+    if (!customerAlloc && !smartAlloc) return []
     
-    // Group by DC (channel-state)
+    // Group by Product + DC (channel-state)
     const dcMap = new Map<string, { 
+      product: string,
       dc: string, 
       channel: string, 
       state: string,
@@ -179,35 +318,74 @@ export default function AnalysisPage() {
       savings: number
     }>()
     
-    customerAlloc.forEach(item => {
-      const key = `${item.channel}-${item.state}`
-      dcMap.set(key, {
-        dc: key,
-        channel: item.channel,
-        state: item.state,
-        customerWarehouse: item.warehouse,
-        customerUnits: item.allocatedUnits,
-        customerCost: item.totalCost,
-        customerDistance: item.distanceMiles,
-        smartWarehouse: '',
-        smartUnits: 0,
-        smartCost: 0,
-        smartDistance: 0,
-        savings: 0
+    if (customerAlloc) {
+      customerAlloc.forEach(item => {
+        const key = `${item.product}-${item.channel}-${item.state}`
+        if (dcMap.has(key)) {
+          const existing = dcMap.get(key)!
+          if (!existing.customerWarehouse.includes(item.warehouse)) {
+             existing.customerWarehouse += `, ${item.warehouse}`
+          }
+          existing.customerUnits += item.allocatedUnits
+          existing.customerCost += item.totalCost
+        } else {
+          dcMap.set(key, {
+            product: item.product,
+            dc: `${item.channel}-${item.state}`,
+            channel: item.channel,
+            state: item.state,
+            customerWarehouse: item.warehouse,
+            customerUnits: item.allocatedUnits,
+            customerCost: item.totalCost,
+            customerDistance: item.distanceMiles,
+            smartWarehouse: '',
+            smartUnits: 0,
+            smartCost: 0,
+            smartDistance: 0,
+            savings: 0
+          })
+        }
       })
-    })
+    }
     
-    smartAlloc.forEach(item => {
-      const key = `${item.channel}-${item.state}`
-      const existing = dcMap.get(key)
-      if (existing) {
-        existing.smartWarehouse = item.warehouse
-        existing.smartUnits = item.allocatedUnits
-        existing.smartCost = item.totalCost
-        existing.smartDistance = item.distanceMiles
-        existing.savings = existing.customerCost - item.totalCost
-      }
-    })
+    if (smartAlloc) {
+      smartAlloc.forEach(item => {
+        const key = `${item.product}-${item.channel}-${item.state}`
+        const existing = dcMap.get(key)
+        if (existing) {
+          if (existing.smartWarehouse) {
+            if (!existing.smartWarehouse.includes(item.warehouse)) {
+              existing.smartWarehouse += `, ${item.warehouse}`
+            }
+            existing.smartUnits += item.allocatedUnits
+            existing.smartCost += item.totalCost
+          } else {
+            existing.smartWarehouse = item.warehouse
+            existing.smartUnits = item.allocatedUnits
+            existing.smartCost = item.totalCost
+            existing.smartDistance = item.distanceMiles
+          }
+          existing.savings = existing.customerCost - existing.smartCost
+        } else {
+          // Handle edge case where Smart fulfills a demand not mapped in Customer plan
+          dcMap.set(key, {
+            product: item.product,
+            dc: `${item.channel}-${item.state}`,
+            channel: item.channel,
+            state: item.state,
+            customerWarehouse: 'None',
+            customerUnits: 0,
+            customerCost: 0,
+            customerDistance: 0,
+            smartWarehouse: item.warehouse,
+            smartUnits: item.allocatedUnits,
+            smartCost: item.totalCost,
+            smartDistance: item.distanceMiles,
+            savings: -item.totalCost
+          })
+        }
+      })
+    }
     
     return Array.from(dcMap.values())
   }
@@ -337,121 +515,6 @@ export default function AnalysisPage() {
       return { source, target, units: v.units, distance: v.distance }
     })
   }, [smartWeek3, smartWeek4])
-
-  const renderRouteMap = (links: { source: string, target: string, units: number, distance: number }[], lineColor: string, title: string, totalCost: number) => {
-    const getX = (lon: number) => ((lon - (-128)) / (-65 - (-128))) * 1000
-    const getY = (lat: number) => 600 - ((lat - 24) / (50 - 24)) * 600
-
-    const totalMiles = links.reduce((sum, link) => sum + link.distance, 0)
-
-    const activeWhs = new Set(links.map(l => l.source))
-    const whNodes = new Map()
-    store.warehouses.forEach(wh => {
-      const coords = getCoordinates(wh.address) || { lat: 39.8, lon: -98.5 }
-      whNodes.set(wh.name, { id: wh.id, name: wh.name, x: getX(coords.lon), y: getY(coords.lat), active: activeWhs.has(wh.name) })
-    })
-
-    const dcNodes = new Map()
-    store.distributionCenters.forEach(dc => {
-      const coords = getCoordinates(dc.address) || { lat: 39.8, lon: -98.5 }
-      const dcId = `${dc.channel}-${dc.state}`
-      dcNodes.set(dcId, { id: dcId, name: `${dc.channel} (${dc.state})`, x: getX(coords.lon), y: getY(coords.lat) })
-    })
-
-    const backgroundCities = [
-      { name: "Seattle", lat: 47.6062, lon: -122.3321 },
-      { name: "San Francisco", lat: 37.7749, lon: -122.4194 },
-      { name: "Los Angeles", lat: 34.0522, lon: -118.2437 },
-      { name: "Phoenix", lat: 33.4484, lon: -112.0740 },
-      { name: "Denver", lat: 39.7392, lon: -104.9903 },
-      { name: "Dallas", lat: 32.7767, lon: -96.7970 },
-      { name: "Houston", lat: 29.7604, lon: -95.3698 },
-      { name: "Chicago", lat: 41.8781, lon: -87.6298 },
-      { name: "Atlanta", lat: 33.749, lon: -84.388 },
-      { name: "Miami", lat: 25.7617, lon: -80.1918 },
-      { name: "New York", lat: 40.7128, lon: -74.0060 },
-      { name: "Boston", lat: 42.3601, lon: -71.0589 },
-    ]
-
-    return (
-      <Card className="bg-card border-border overflow-hidden shadow-sm flex flex-col">
-        <CardHeader className="pb-3 border-b bg-muted/10 flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base flex items-center gap-2">
-            <MapIcon className="h-4 w-4" style={{ color: lineColor }} /> {title}
-          </CardTitle>
-          <div className="flex gap-4 text-sm mt-0 items-center">
-            <div className="text-right">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Route Miles</p>
-              <p className="font-mono font-medium leading-none">{totalMiles.toLocaleString(undefined, { maximumFractionDigits: 0 })} mi</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Total Cost</p>
-              <p className="font-mono font-bold leading-none" style={{ color: lineColor }}>${totalCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
-            </div>
-          </div>
-        </CardHeader>
-        <div className="relative w-full h-[400px] bg-[#0B1120] overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none opacity-40" style={{
-            backgroundImage: 'url("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Blank_US_Map_%28states_only%29.svg/1000px-Blank_US_Map_%28states_only%29.svg.png")',
-            backgroundSize: '100% 100%', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
-            filter: 'invert(1) hue-rotate(210deg) brightness(0.6) contrast(1.2)'
-          }} />
-          <svg viewBox="0 0 1000 600" className="absolute inset-0 w-full h-full z-10" preserveAspectRatio="none">
-            {backgroundCities.map((city, i) => (
-              <g key={`bg-city-${i}`} transform={`translate(${getX(city.lon)},${getY(city.lat)})`}>
-                <circle r="3" fill="#1e293b" />
-                <text y="-6" fontSize="11" fill="#475569" textAnchor="middle" className="font-medium tracking-tight" style={{ paintOrder: 'stroke', stroke: '#0f172a', strokeWidth: '2px' }}>
-                  {city.name}
-                </text>
-              </g>
-            ))}
-            {links.map((link, i) => {
-              const s = whNodes.get(link.source)
-              const t = dcNodes.get(link.target)
-              if (!s || !t) return null
-              const dist = Math.sqrt(Math.pow(t.x - s.x, 2) + Math.pow(t.y - s.y, 2))
-              const cx = (s.x + t.x) / 2
-              const cy = Math.min(s.y, t.y) - dist * 0.15
-              const pathData = `M ${s.x} ${s.y} Q ${cx} ${cy} ${t.x} ${t.y}`
-              const strokeW = Math.max(2, Math.min(6, link.units / 800))
-              return (
-                <g key={`link-${i}`}>
-                  <path d={pathData} fill="none" stroke={lineColor} strokeWidth={strokeW} strokeOpacity="0.7" strokeLinecap="round" />
-                  <circle r={strokeW * 0.8} fill="#ffffff" opacity="0.8">
-                    <animateMotion dur="2.5s" repeatCount="indefinite" path={pathData} />
-                  </circle>
-                </g>
-              )
-            })}
-            {Array.from(dcNodes.values()).map(node => (
-              <g key={`dc-${node.id}`} transform={`translate(${node.x},${node.y})`}>
-                <ellipse cx="0" cy="2" rx="6" ry="2" fill="rgba(0,0,0,0.5)" />
-                <path d="M0,0 C-6,-8 -9,-12 -9,-16 A9,9 0 1,1 9,-16 C9,-12 6,-8 0,0 Z" fill="#ef4444" stroke="#0f172a" strokeWidth="1" />
-                <text y="14" fontSize="11" fill="#e2e8f0" textAnchor="middle" className="font-bold tracking-tight" style={{ paintOrder: 'stroke', stroke: '#0f172a', strokeWidth: '3px' }}>{node.name}</text>
-              </g>
-            ))}
-            {Array.from(whNodes.values()).map(node => (
-              <g key={`wh-${node.id}`} transform={`translate(${node.x},${node.y})`}>
-                <ellipse cx="0" cy="2" rx="8" ry="3" fill="rgba(0,0,0,0.5)" />
-                <path d="M0,0 C-8,-10 -12,-15 -12,-20 A12,12 0 1,1 12,-20 C12,-15 8,-10 0,0 Z" fill={node.active ? "#22c55e" : "#334155"} stroke="#0f172a" strokeWidth="1.5" />
-                <text y="-25" fontSize="12" fill={node.active ? "#f8fafc" : "#64748b"} textAnchor="middle" className="font-bold tracking-wide" style={{ paintOrder: 'stroke', stroke: '#0f172a', strokeWidth: '3px' }}>{node.name}</text>
-              </g>
-            ))}
-          </svg>
-          <div className="absolute bottom-3 left-3 text-xs flex flex-col gap-2 bg-slate-900/90 text-slate-300 p-3 rounded border border-slate-800 shadow-xl backdrop-blur-sm">
-            <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#22c55e] rounded-[2px] border border-[#0f172a]"></div> Active WH</div>
-            <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#ef4444] rounded-full border border-[#0f172a]"></div> Destination DC</div>
-            <div className="flex items-center gap-2 mt-1">
-              <div className="w-6 h-1 rounded-full relative overflow-hidden" style={{ backgroundColor: lineColor }}>
-                <div className="absolute top-0 bottom-0 w-2 bg-white/70 animate-ping"></div>
-              </div>
-              Active Route
-            </div>
-          </div>
-        </div>
-      </Card>
-    )
-  }
 
   return (
     <div className="space-y-6">
@@ -712,8 +775,8 @@ export default function AnalysisPage() {
 
               {/* Route Map Comparison Grid */}
               <div className="grid lg:grid-cols-2 gap-4">
-                {renderRouteMap(customerLinks, CHART_COLORS.customer, "Baseline (Customer Plan)", customerCostTotal)}
-                {renderRouteMap(smartLinks, CHART_COLORS.smart, "Optimized (Smart Plan)", smartCostTotal)}
+                <InteractiveRouteMap links={customerLinks} lineColor={CHART_COLORS.customer} title="Baseline (Customer Plan)" totalCost={customerCostTotal} warehouses={store.warehouses} distributionCenters={store.distributionCenters} />
+                <InteractiveRouteMap links={smartLinks} lineColor={CHART_COLORS.smart} title="Optimized (Smart Plan)" totalCost={smartCostTotal} warehouses={store.warehouses} distributionCenters={store.distributionCenters} />
               </div>
 
               {/* Warehouse Summary */}
@@ -803,6 +866,7 @@ export default function AnalysisPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>Product</TableHead>
                         <TableHead>Channel</TableHead>
                         <TableHead>State</TableHead>
                         <TableHead className="text-center border-l bg-amber-500/5">Customer WH</TableHead>
@@ -819,6 +883,7 @@ export default function AnalysisPage() {
                     <TableBody>
                       {comparison3.map((row, idx) => (
                         <TableRow key={idx}>
+                          <TableCell className="font-mono">{row.product}</TableCell>
                           <TableCell><Badge variant="outline">{row.channel}</Badge></TableCell>
                           <TableCell>{row.state}</TableCell>
                           <TableCell className="text-center border-l bg-amber-500/5 font-medium">{row.customerWarehouse}</TableCell>
@@ -835,7 +900,7 @@ export default function AnalysisPage() {
                         </TableRow>
                       ))}
                       <TableRow className="bg-muted/30 font-bold">
-                        <TableCell colSpan={2}>TOTAL Week 3</TableCell>
+                        <TableCell colSpan={3}>TOTAL Week 3</TableCell>
                         <TableCell className="border-l bg-amber-500/5"></TableCell>
                         <TableCell className="bg-amber-500/5"></TableCell>
                         <TableCell className="text-right bg-amber-500/5">{comparison3.reduce((s, r) => s + r.customerUnits, 0).toLocaleString()}</TableCell>
@@ -865,6 +930,7 @@ export default function AnalysisPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>Product</TableHead>
                         <TableHead>Channel</TableHead>
                         <TableHead>State</TableHead>
                         <TableHead className="text-center border-l bg-amber-500/5">Customer WH</TableHead>
@@ -881,6 +947,7 @@ export default function AnalysisPage() {
                     <TableBody>
                       {comparison4.map((row, idx) => (
                         <TableRow key={idx}>
+                          <TableCell className="font-mono">{row.product}</TableCell>
                           <TableCell><Badge variant="outline">{row.channel}</Badge></TableCell>
                           <TableCell>{row.state}</TableCell>
                           <TableCell className="text-center border-l bg-amber-500/5 font-medium">{row.customerWarehouse}</TableCell>
@@ -897,7 +964,7 @@ export default function AnalysisPage() {
                         </TableRow>
                       ))}
                       <TableRow className="bg-muted/30 font-bold">
-                        <TableCell colSpan={2}>TOTAL Week 4</TableCell>
+                        <TableCell colSpan={3}>TOTAL Week 4</TableCell>
                         <TableCell className="border-l bg-amber-500/5"></TableCell>
                         <TableCell className="bg-amber-500/5"></TableCell>
                         <TableCell className="text-right bg-amber-500/5">{comparison4.reduce((s, r) => s + r.customerUnits, 0).toLocaleString()}</TableCell>

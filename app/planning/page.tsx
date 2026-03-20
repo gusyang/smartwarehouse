@@ -12,7 +12,137 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useWarehouseStore } from "@/lib/store"
 import { calculateAvailableInventory, generateCustomerPlanWithDetails, validateAllocations, getCoordinates, type PlanDetailEntry, type GeneratedPlanResult } from "@/lib/optimizer"
-import { Archive, TrendingUp, Briefcase, Plus, Trash2, Check, AlertTriangle, X, RotateCcw, Calculator, Info, Map as MapIcon, Globe } from "lucide-react"
+import { Archive, TrendingUp, Briefcase, Plus, Trash2, Check, AlertTriangle, X, RotateCcw, Calculator, Info, Map as MapIcon, Globe, Pencil, ZoomIn, ZoomOut, Maximize } from "lucide-react"
+
+const InteractivePlanningMap = ({ links, warehouses, distributionCenters, selectedWarehouses }: any) => {
+  const [scale, setScale] = useState(1)
+  const [position, setPosition] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+
+  const getX = (lon: number) => ((lon - (-128)) / (-65 - (-128))) * 1000
+  const getY = (lat: number) => 600 - ((lat - 24) / (50 - 24)) * 600
+
+  const whNodes = new Map()
+  warehouses.forEach((wh: any) => {
+    const coords = getCoordinates(wh.address) || { lat: 39.8, lon: -98.5 }
+    whNodes.set(wh.name, { id: wh.id, name: wh.name, x: getX(coords.lon), y: getY(coords.lat), active: selectedWarehouses.includes(wh.name) })
+  })
+
+  const dcNodes = new Map()
+  distributionCenters.forEach((dc: any) => {
+    const coords = getCoordinates(dc.address) || { lat: 39.8, lon: -98.5 }
+    const dcId = `${dc.channel}-${dc.state}`
+    dcNodes.set(dcId, { id: dcId, name: `${dc.channel} (${dc.state})`, x: getX(coords.lon), y: getY(coords.lat) })
+  })
+
+  const backgroundCities = [
+    { name: "Seattle", lat: 47.6062, lon: -122.3321 }, { name: "Portland", lat: 45.5152, lon: -122.6784 },
+    { name: "San Francisco", lat: 37.7749, lon: -122.4194 }, { name: "Los Angeles", lat: 34.0522, lon: -118.2437 },
+    { name: "San Diego", lat: 32.7157, lon: -117.1611 }, { name: "Las Vegas", lat: 36.1699, lon: -115.1398 },
+    { name: "Phoenix", lat: 33.4484, lon: -112.0740 }, { name: "Salt Lake City", lat: 40.7608, lon: -111.8910 },
+    { name: "Denver", lat: 39.7392, lon: -104.9903 }, { name: "Dallas", lat: 32.7767, lon: -96.7970 },
+    { name: "Austin", lat: 30.2672, lon: -97.7431 }, { name: "Houston", lat: 29.7604, lon: -95.3698 },
+    { name: "New Orleans", lat: 29.9511, lon: -90.0715 }, { name: "Chicago", lat: 41.8781, lon: -87.6298 },
+    { name: "Minneapolis", lat: 44.9778, lon: -93.2650 }, { name: "Detroit", lat: 42.3314, lon: -83.0458 },
+    { name: "Atlanta", lat: 33.749, lon: -84.388 }, { name: "Charlotte", lat: 35.2271, lon: -80.8431 },
+    { name: "Miami", lat: 25.7617, lon: -80.1918 }, { name: "Orlando", lat: 28.5383, lon: -81.3792 },
+    { name: "Washington DC", lat: 38.9072, lon: -77.0369 }, { name: "Philadelphia", lat: 39.9526, lon: -75.1652 },
+    { name: "New York", lat: 40.7128, lon: -74.0060 }, { name: "Boston", lat: 42.3601, lon: -71.0589 }
+  ]
+
+  return (
+    <div className="relative w-full h-[500px] bg-[#0B1120] rounded-xl border border-border overflow-hidden shadow-inner group">
+      {/* Controls */}
+      <div className="absolute top-4 right-4 flex flex-col gap-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity">
+        <Button variant="secondary" size="icon" className="h-8 w-8 bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700" onClick={() => setScale(s => Math.min(s + 0.5, 4))}>
+          <ZoomIn className="h-4 w-4" />
+        </Button>
+        <Button variant="secondary" size="icon" className="h-8 w-8 bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700" onClick={() => setScale(s => Math.max(s - 0.5, 1))}>
+          <ZoomOut className="h-4 w-4" />
+        </Button>
+        <Button variant="secondary" size="icon" className="h-8 w-8 bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700" onClick={() => { setScale(1); setPosition({ x: 0, y: 0 }) }}>
+          <Maximize className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Draggable Overlay */}
+      <div 
+        className={`absolute inset-0 z-20 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        onMouseDown={(e) => { setIsDragging(true); setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y }) }}
+        onMouseMove={(e) => { if (isDragging) setPosition({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }) }}
+        onMouseUp={() => setIsDragging(false)}
+        onMouseLeave={() => setIsDragging(false)}
+      />
+
+      {/* Canvas */}
+      <div 
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        style={{ transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`, transformOrigin: 'center', transition: isDragging ? 'none' : 'transform 0.2s ease-out' }}
+      >
+        {/* High-Res SVG Map Layer */}
+        <div className="absolute inset-0 opacity-50" style={{
+          backgroundImage: 'url("https://upload.wikimedia.org/wikipedia/commons/1/1a/Blank_US_Map_%28states_only%29.svg")',
+          backgroundSize: '100% 100%', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
+          filter: 'invert(1) hue-rotate(210deg) brightness(0.8) contrast(1.2) drop-shadow(0 0 5px rgba(59,130,246,0.3))'
+        }} />
+        
+        <svg viewBox="0 0 1000 600" className="absolute inset-0 w-full h-full z-10" preserveAspectRatio="none">
+          {backgroundCities.map((city, i) => (
+            <g key={`bg-city-${i}`} transform={`translate(${getX(city.lon)},${getY(city.lat)})`}>
+              <circle r="3" fill="#1e293b" />
+              <text y="-6" fontSize="11" fill="#475569" textAnchor="middle" className="font-medium tracking-tight" style={{ paintOrder: 'stroke', stroke: '#0f172a', strokeWidth: '2px' }}>{city.name}</text>
+            </g>
+          ))}
+          {links.map((link: any, i: number) => {
+            const s = whNodes.get(link.source); const t = dcNodes.get(link.target); if (!s || !t) return null
+            const dist = Math.sqrt(Math.pow(t.x - s.x, 2) + Math.pow(t.y - s.y, 2)); const cx = (s.x + t.x) / 2; const cy = Math.min(s.y, t.y) - dist * 0.15
+            const pathData = `M ${s.x} ${s.y} Q ${cx} ${cy} ${t.x} ${t.y}`; const strokeW = Math.max(2, Math.min(6, link.units / 800))
+            return (
+              <g key={`link-${i}`}>
+                <path d={pathData} fill="none" stroke="#3b82f6" strokeWidth={strokeW} strokeOpacity="0.6" strokeLinecap="round" />
+                <circle r={strokeW * 0.8} fill="#bfdbfe" className="drop-shadow-md"><animateMotion dur="2.5s" repeatCount="indefinite" path={pathData} /></circle>
+              </g>
+            )
+          })}
+          {Array.from(dcNodes.values()).map(node => (
+            <g key={`dc-${node.id}`} transform={`translate(${node.x},${node.y})`}>
+              <ellipse cx="0" cy="2" rx="8" ry="3" fill="rgba(0,0,0,0.5)" />
+              <path d="M0,0 C-8,-10 -12,-16 -12,-22 A12,12 0 1,1 12,-22 C12,-16 8,-10 0,0 Z" fill="#ef4444" stroke="#0f172a" strokeWidth="1.5" />
+              <circle cx="0" cy="-22" r="4" fill="#ffffff" />
+              <text y="16" fontSize="13" fill="#e2e8f0" textAnchor="middle" className="font-bold tracking-tight" style={{ paintOrder: 'stroke', stroke: '#0f172a', strokeWidth: '3px' }}>{node.name}</text>
+            </g>
+          ))}
+          {Array.from(whNodes.values()).map(node => (
+            <g key={`wh-${node.id}`} transform={`translate(${node.x},${node.y})`}>
+              <ellipse cx="0" cy="2" rx="10" ry="4" fill="rgba(0,0,0,0.5)" />
+              <path d="M0,0 C-10,-12 -14,-18 -14,-26 A14,14 0 1,1 14,-26 C14,-18 10,-12 0,0 Z" fill={node.active ? "#22c55e" : "#334155"} stroke="#0f172a" strokeWidth="2" />
+              <circle cx="0" cy="-26" r="5" fill="#ffffff" />
+              <text y="-32" fontSize="14" fill={node.active ? "#f8fafc" : "#64748b"} textAnchor="middle" className="font-bold tracking-wide" style={{ paintOrder: 'stroke', stroke: '#0f172a', strokeWidth: '3px' }}>{node.name}</text>
+            </g>
+          ))}
+        </svg>
+      </div>
+
+      {/* Dark Map Legend */}
+      <div className="absolute bottom-4 left-4 text-xs flex flex-col gap-3 bg-slate-900/90 text-slate-300 p-4 rounded-lg border border-slate-800 shadow-xl backdrop-blur-md pointer-events-none z-40">
+        <div className="font-bold mb-1 flex items-center gap-2 text-slate-100"><MapIcon className="w-4 h-4 text-blue-500" /> Map Legend</div>
+        <div className="flex items-center gap-2">
+          <svg width="14" height="20" viewBox="-14 -26 28 28"><path d="M0,0 C-10,-12 -14,-18 -14,-26 A14,14 0 1,1 14,-26 C14,-18 10,-12 0,0 Z" fill="#22c55e" stroke="#0f172a" strokeWidth="1.5" /></svg>
+          Active Warehouse
+        </div>
+        <div className="flex items-center gap-2">
+          <svg width="14" height="20" viewBox="-12 -22 24 24"><path d="M0,0 C-8,-10 -12,-16 -12,-22 A12,12 0 1,1 12,-22 C12,-16 8,-10 0,0 Z" fill="#ef4444" stroke="#0f172a" strokeWidth="1.5" /></svg>
+          Distribution Center
+        </div>
+        <div className="flex items-center gap-2 mt-1">
+          <div className="w-6 h-1 bg-blue-500 rounded-full relative overflow-hidden"><div className="absolute top-0 bottom-0 w-2 bg-blue-200 animate-ping"></div></div>
+          Delivery Route
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function PlanningPage() {
   const store = useWarehouseStore()
@@ -24,6 +154,10 @@ export default function PlanningPage() {
   const [newInventory, setNewInventory] = useState({ warehouseName: "", skuCode: "", quantityOnHand: 0 })
   const [newSchedule, setNewSchedule] = useState({ warehouse: "", sku: "", incomingWeek3: 0, incomingWeek4: 0, outgoingWeek1: 0, outgoingWeek2: 0 })
   const [newDemand, setNewDemand] = useState({ product: "", channel: "", state: "", demandWeek3: 0, demandWeek4: 0 })
+
+  const [editingInventoryId, setEditingInventoryId] = useState<string | null>(null)
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null)
+  const [editingDemandId, setEditingDemandId] = useState<string | null>(null)
 
   const showSuccess = (msg: string) => {
     setSuccessMessage(msg)
@@ -72,170 +206,11 @@ export default function PlanningPage() {
     showSuccess(`Plan generated: ${result.itemsPerContainer} items/container, Rate: $${result.calculatedRatePerUnit.toFixed(4)}/unit/100mi`)
   }
 
-  const renderMap = () => {
-    const whNodes = new Map<string, { id: string, name: string, x: number, y: number, active: boolean }>()
-    const dcNodes = new Map<string, { id: string, name: string, x: number, y: number }>()
-
-    // Projection mapping for the specific USA background image bounds
-    const getX = (lon: number) => ((lon - (-128)) / (-65 - (-128))) * 1000
-    const getY = (lat: number) => 600 - ((lat - 24) / (50 - 24)) * 600
-
-    // Background reference cities to make the map look realistic
-    const backgroundCities = [
-      { name: "Seattle", lat: 47.6062, lon: -122.3321 },
-      { name: "San Francisco", lat: 37.7749, lon: -122.4194 },
-      { name: "Los Angeles", lat: 34.0522, lon: -118.2437 },
-      { name: "Phoenix", lat: 33.4484, lon: -112.0740 },
-      { name: "Denver", lat: 39.7392, lon: -104.9903 },
-      { name: "Dallas", lat: 32.7767, lon: -96.7970 },
-      { name: "Houston", lat: 29.7604, lon: -95.3698 },
-      { name: "Chicago", lat: 41.8781, lon: -87.6298 },
-      { name: "Atlanta", lat: 33.749, lon: -84.388 },
-      { name: "Miami", lat: 25.7617, lon: -80.1918 },
-      { name: "New York", lat: 40.7128, lon: -74.0060 },
-      { name: "Boston", lat: 42.3601, lon: -71.0589 },
-    ]
-
-    // Always display all warehouses and DCs so the map isn't blank before generation
-    store.warehouses.forEach(wh => {
-      const coords = getCoordinates(wh.address) || { lat: 39.8, lon: -98.5 }
-      whNodes.set(wh.name, {
-        id: wh.id,
-        name: wh.name,
-        x: getX(coords.lon),
-        y: getY(coords.lat),
-        active: store.customerSettings.selectedWarehouses.includes(wh.name)
-      })
+  const mapLinks: any[] = []
+  if (planDetails && planDetails.details) {
+    planDetails.details.forEach(detail => {
+      mapLinks.push({ source: detail.warehouse, target: `${detail.channel}-${detail.state}`, units: detail.unitsWeek3 + detail.unitsWeek4 })
     })
-
-    store.distributionCenters.forEach(dc => {
-      const coords = getCoordinates(dc.address) || { lat: 39.8, lon: -98.5 }
-      const dcId = `${dc.channel}-${dc.state}`
-      dcNodes.set(dcId, {
-        id: dcId,
-        name: `${dc.channel} (${dc.state})`,
-        x: getX(coords.lon),
-        y: getY(coords.lat)
-      })
-    })
-
-    // Generate active links if plan exists
-    const links: { source: string, target: string, units: number }[] = []
-    if (planDetails && planDetails.details) {
-      planDetails.details.forEach(detail => {
-        const whId = detail.warehouse
-        const dcId = `${detail.channel}-${detail.state}`
-        if (whNodes.has(whId) && dcNodes.has(dcId)) {
-          links.push({
-            source: whId,
-            target: dcId,
-            units: detail.unitsWeek3 + detail.unitsWeek4
-          })
-        }
-      })
-    }
-
-    return (
-      <div className="relative w-full h-[500px] bg-[#0B1120] rounded-xl border border-border overflow-hidden shadow-inner">
-        {/* Real US Map SVG Image Overlay (Dark Theme via Filter) */}
-        <div 
-          className="absolute inset-0 pointer-events-none opacity-40"
-          style={{
-            backgroundImage: 'url("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Blank_US_Map_%28states_only%29.svg/1000px-Blank_US_Map_%28states_only%29.svg.png")',
-            backgroundSize: '100% 100%',
-            backgroundPosition: 'center',
-            backgroundRepeat: 'no-repeat',
-            filter: 'invert(1) hue-rotate(210deg) brightness(0.6) contrast(1.2)'
-          }}
-        />
-
-        {/* Dynamic Nodes and Data Links */}
-        <svg viewBox="0 0 1000 600" className="absolute inset-0 w-full h-full z-10" preserveAspectRatio="none">
-          
-          {/* Background Cities */}
-          {backgroundCities.map((city, i) => (
-            <g key={`bg-city-${i}`} transform={`translate(${getX(city.lon)},${getY(city.lat)})`}>
-              <circle r="3" fill="#1e293b" />
-              <text y="-6" fontSize="11" fill="#475569" textAnchor="middle" className="font-medium tracking-tight" style={{ paintOrder: 'stroke', stroke: '#0f172a', strokeWidth: '2px' }}>
-                {city.name}
-              </text>
-            </g>
-          ))}
-
-          {links.map((link, i) => {
-            const s = whNodes.get(link.source)
-            const t = dcNodes.get(link.target)
-            if (!s || !t) return null
-            
-            const dist = Math.sqrt(Math.pow(t.x - s.x, 2) + Math.pow(t.y - s.y, 2))
-            const cx = (s.x + t.x) / 2
-            const cy = Math.min(s.y, t.y) - dist * 0.15 // Gentle curve
-            const pathData = `M ${s.x} ${s.y} Q ${cx} ${cy} ${t.x} ${t.y}`
-            const strokeW = Math.max(2, Math.min(6, link.units / 800))
-            
-            return (
-              <g key={`link-${i}`}>
-                <path 
-                  d={pathData} 
-                  fill="none" 
-                  stroke="#3b82f6" 
-                  strokeWidth={strokeW} 
-                  strokeOpacity="0.6" 
-                  strokeLinecap="round" 
-                />
-                {/* Moving dot representing a truck */}
-                <circle r={strokeW * 0.8} fill="#bfdbfe" className="drop-shadow-md">
-                  <animateMotion dur="2.5s" repeatCount="indefinite" path={pathData} />
-                </circle>
-              </g>
-            )
-          })}
-
-          {/* DC Nodes (Red Pins) */}
-          {Array.from(dcNodes.values()).map(node => (
-            <g key={`dc-${node.id}`} transform={`translate(${node.x},${node.y})`}>
-              <ellipse cx="0" cy="2" rx="8" ry="3" fill="rgba(0,0,0,0.5)" />
-              <path d="M0,0 C-8,-10 -12,-16 -12,-22 A12,12 0 1,1 12,-22 C12,-16 8,-10 0,0 Z" fill="#ef4444" stroke="#0f172a" strokeWidth="1.5" />
-              <circle cx="0" cy="-22" r="4" fill="#ffffff" />
-              <text y="16" fontSize="13" fill="#e2e8f0" textAnchor="middle" className="font-bold tracking-tight" style={{ paintOrder: 'stroke', stroke: '#0f172a', strokeWidth: '3px' }}>{node.name}</text>
-            </g>
-          ))}
-
-          {/* Warehouse Nodes (Green Pins) */}
-          {Array.from(whNodes.values()).map(node => (
-            <g key={`wh-${node.id}`} transform={`translate(${node.x},${node.y})`}>
-              <ellipse cx="0" cy="2" rx="10" ry="4" fill="rgba(0,0,0,0.5)" />
-              <path d="M0,0 C-10,-12 -14,-18 -14,-26 A14,14 0 1,1 14,-26 C14,-18 10,-12 0,0 Z" fill={node.active ? "#22c55e" : "#334155"} stroke="#0f172a" strokeWidth="2" />
-              <circle cx="0" cy="-26" r="5" fill="#ffffff" />
-              <text y="-32" fontSize="14" fill={node.active ? "#f8fafc" : "#64748b"} textAnchor="middle" className="font-bold tracking-wide" style={{ paintOrder: 'stroke', stroke: '#0f172a', strokeWidth: '3px' }}>{node.name}</text>
-            </g>
-          ))}
-        </svg>
-
-        {/* Dark Map Legend */}
-        <div className="absolute bottom-4 left-4 text-xs flex flex-col gap-3 bg-slate-900/90 text-slate-300 p-4 rounded-lg border border-slate-800 shadow-xl backdrop-blur-md">
-          <div className="font-bold mb-1 flex items-center gap-2 text-slate-100"><MapIcon className="w-4 h-4 text-blue-500" /> Map Legend</div>
-          <div className="flex items-center gap-2">
-            <svg width="14" height="20" viewBox="-14 -26 28 28">
-              <path d="M0,0 C-10,-12 -14,-18 -14,-26 A14,14 0 1,1 14,-26 C14,-18 10,-12 0,0 Z" fill="#22c55e" stroke="#0f172a" strokeWidth="1.5" />
-            </svg>
-            Active Warehouse
-          </div>
-          <div className="flex items-center gap-2">
-            <svg width="14" height="20" viewBox="-12 -22 24 24">
-              <path d="M0,0 C-8,-10 -12,-16 -12,-22 A12,12 0 1,1 12,-22 C12,-16 8,-10 0,0 Z" fill="#ef4444" stroke="#0f172a" strokeWidth="1.5" />
-            </svg>
-            Distribution Center
-          </div>
-          <div className="flex items-center gap-2 mt-1">
-            <div className="w-6 h-1 bg-blue-500 rounded-full relative overflow-hidden">
-              <div className="absolute top-0 bottom-0 w-2 bg-blue-200 animate-ping"></div>
-            </div>
-            Delivery Route
-          </div>
-        </div>
-      </div>
-    )
   }
 
   return (
@@ -284,7 +259,7 @@ export default function PlanningPage() {
                       <TableHead>Warehouse</TableHead>
                       <TableHead>SKU</TableHead>
                       <TableHead className="text-right">Qty</TableHead>
-                      <TableHead className="w-[60px]"></TableHead>
+                      <TableHead className="w-[100px] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -293,17 +268,27 @@ export default function PlanningPage() {
                         <TableCell className="font-medium">{inv.warehouseName}</TableCell>
                         <TableCell className="font-mono">{inv.skuCode}</TableCell>
                         <TableCell className="text-right">{inv.quantityOnHand.toLocaleString()}</TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="icon" onClick={() => store.deleteWarehouseInventory(idx)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => {
+                              setEditingInventoryId(inv.id)
+                              setNewInventory({ warehouseName: inv.warehouseName, skuCode: inv.skuCode, quantityOnHand: inv.quantityOnHand })
+                            }}>
+                              <Pencil className="h-4 w-4 text-blue-500" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => store.deleteWarehouseInventory(idx)}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="pt-4 border-t mt-4">
+                <div className="text-sm font-medium mb-3">{editingInventoryId ? "Edit Inventory" : "Add Inventory"}</div>
+                <div className="grid grid-cols-3 gap-3">
                   <Select value={newInventory.warehouseName} onValueChange={(v) => setNewInventory({ ...newInventory, warehouseName: v })}>
                     <SelectTrigger><SelectValue placeholder="Warehouse" /></SelectTrigger>
                     <SelectContent>
@@ -318,15 +303,33 @@ export default function PlanningPage() {
                   </Select>
                   <Input type="number" placeholder="Qty" value={newInventory.quantityOnHand || ""} onChange={(e) => setNewInventory({ ...newInventory, quantityOnHand: parseInt(e.target.value) || 0 })} />
                 </div>
-                <Button size="sm" onClick={() => {
-                  if (newInventory.warehouseName && newInventory.skuCode) {
-                    store.addWarehouseInventory(newInventory)
-                    setNewInventory({ warehouseName: "", skuCode: "", quantityOnHand: 0 })
-                    showSuccess("Inventory added")
-                  }
-                }}>
-                  <Plus className="h-4 w-4 mr-2" /> Add
-                </Button>
+                <div className="mt-3 flex gap-2">
+                  {editingInventoryId ? (
+                    <>
+                      <Button size="sm" onClick={() => {
+                        if (newInventory.warehouseName && newInventory.skuCode) {
+                          store.updateWarehouseInventory(editingInventoryId, newInventory)
+                          setEditingInventoryId(null)
+                          setNewInventory({ warehouseName: "", skuCode: "", quantityOnHand: 0 })
+                          showSuccess("Inventory updated")
+                        }
+                      }}><Check className="h-4 w-4 mr-2" /> Update</Button>
+                      <Button size="sm" variant="outline" onClick={() => {
+                        setEditingInventoryId(null)
+                        setNewInventory({ warehouseName: "", skuCode: "", quantityOnHand: 0 })
+                      }}><X className="h-4 w-4 mr-2" /> Cancel</Button>
+                    </>
+                  ) : (
+                    <Button size="sm" onClick={() => {
+                      if (newInventory.warehouseName && newInventory.skuCode) {
+                        store.addWarehouseInventory(newInventory)
+                        setNewInventory({ warehouseName: "", skuCode: "", quantityOnHand: 0 })
+                        showSuccess("Inventory added")
+                      }
+                    }}><Plus className="h-4 w-4 mr-2" /> Add</Button>
+                  )}
+                </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -346,7 +349,7 @@ export default function PlanningPage() {
                       <TableHead className="text-right text-emerald-400">In W4</TableHead>
                       <TableHead className="text-right text-red-400">Out W1</TableHead>
                       <TableHead className="text-right text-red-400">Out W2</TableHead>
-                      <TableHead className="w-[50px]"></TableHead>
+                      <TableHead className="w-[100px] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -358,17 +361,27 @@ export default function PlanningPage() {
                         <TableCell className="text-right text-emerald-400">+{sch.incomingWeek4}</TableCell>
                         <TableCell className="text-right text-red-400">-{sch.outgoingWeek1}</TableCell>
                         <TableCell className="text-right text-red-400">-{sch.outgoingWeek2}</TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="icon" onClick={() => store.deleteWarehouseSchedule(idx)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => {
+                              setEditingScheduleId(sch.id)
+                              setNewSchedule({ warehouse: sch.warehouse, sku: sch.sku, incomingWeek3: sch.incomingWeek3, incomingWeek4: sch.incomingWeek4, outgoingWeek1: sch.outgoingWeek1, outgoingWeek2: sch.outgoingWeek2 })
+                            }}>
+                              <Pencil className="h-4 w-4 text-blue-500" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => store.deleteWarehouseSchedule(idx)}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="pt-4 border-t mt-4">
+                <div className="text-sm font-medium mb-3">{editingScheduleId ? "Edit Schedule" : "Add Schedule"}</div>
+                <div className="grid grid-cols-3 gap-3">
                   <Select value={newSchedule.warehouse} onValueChange={(v) => setNewSchedule({ ...newSchedule, warehouse: v })}>
                     <SelectTrigger><SelectValue placeholder="WH" /></SelectTrigger>
                     <SelectContent>
@@ -387,15 +400,33 @@ export default function PlanningPage() {
                   <Input type="number" placeholder="Out W1" value={newSchedule.outgoingWeek1 || ""} onChange={(e) => setNewSchedule({ ...newSchedule, outgoingWeek1: parseInt(e.target.value) || 0 })} />
                   <Input type="number" placeholder="Out W2" value={newSchedule.outgoingWeek2 || ""} onChange={(e) => setNewSchedule({ ...newSchedule, outgoingWeek2: parseInt(e.target.value) || 0 })} />
                 </div>
-                <Button size="sm" onClick={() => {
-                  if (newSchedule.warehouse && newSchedule.sku) {
-                    store.addWarehouseSchedule(newSchedule)
-                    setNewSchedule({ warehouse: "", sku: "", incomingWeek3: 0, incomingWeek4: 0, outgoingWeek1: 0, outgoingWeek2: 0 })
-                    showSuccess("Schedule added")
-                  }
-                }}>
-                  <Plus className="h-4 w-4 mr-2" /> Add
-                </Button>
+                <div className="mt-3 flex gap-2">
+                  {editingScheduleId ? (
+                    <>
+                      <Button size="sm" onClick={() => {
+                        if (newSchedule.warehouse && newSchedule.sku) {
+                          store.updateWarehouseSchedule(editingScheduleId, newSchedule)
+                          setEditingScheduleId(null)
+                          setNewSchedule({ warehouse: "", sku: "", incomingWeek3: 0, incomingWeek4: 0, outgoingWeek1: 0, outgoingWeek2: 0 })
+                          showSuccess("Schedule updated")
+                        }
+                      }}><Check className="h-4 w-4 mr-2" /> Update</Button>
+                      <Button size="sm" variant="outline" onClick={() => {
+                        setEditingScheduleId(null)
+                        setNewSchedule({ warehouse: "", sku: "", incomingWeek3: 0, incomingWeek4: 0, outgoingWeek1: 0, outgoingWeek2: 0 })
+                      }}><X className="h-4 w-4 mr-2" /> Cancel</Button>
+                    </>
+                  ) : (
+                    <Button size="sm" onClick={() => {
+                      if (newSchedule.warehouse && newSchedule.sku) {
+                        store.addWarehouseSchedule(newSchedule)
+                        setNewSchedule({ warehouse: "", sku: "", incomingWeek3: 0, incomingWeek4: 0, outgoingWeek1: 0, outgoingWeek2: 0 })
+                        showSuccess("Schedule added")
+                      }
+                    }}><Plus className="h-4 w-4 mr-2" /> Add</Button>
+                  )}
+                </div>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -459,7 +490,7 @@ export default function PlanningPage() {
                     <TableHead className="text-right">Week 3</TableHead>
                     <TableHead className="text-right">Week 4</TableHead>
                     <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="w-[60px]"></TableHead>
+                    <TableHead className="w-[100px] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -471,10 +502,18 @@ export default function PlanningPage() {
                       <TableCell className="text-right">{d.demandWeek3.toLocaleString()}</TableCell>
                       <TableCell className="text-right">{d.demandWeek4.toLocaleString()}</TableCell>
                       <TableCell className="text-right font-bold">{(d.demandWeek3 + d.demandWeek4).toLocaleString()}</TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => store.deleteDemandForecast(d.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => {
+                            setEditingDemandId(d.id)
+                            setNewDemand({ product: d.product, channel: d.channel, state: d.state, demandWeek3: d.demandWeek3, demandWeek4: d.demandWeek4 })
+                          }}>
+                            <Pencil className="h-4 w-4 text-blue-500" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => store.deleteDemandForecast(d.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -489,27 +528,61 @@ export default function PlanningPage() {
               </Table>
 
               <Card className="bg-muted/30 border-dashed">
-                <CardContent className="pt-4">
-                  <div className="grid grid-cols-6 gap-4">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">{editingDemandId ? "Edit Demand" : "Add Demand Forecast"}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-5 gap-4">
                     <Select value={newDemand.product} onValueChange={(v) => setNewDemand({ ...newDemand, product: v })}>
                       <SelectTrigger><SelectValue placeholder="Product" /></SelectTrigger>
                       <SelectContent>
                         {store.skus.map(s => <SelectItem key={s.id} value={s.skuCode}>{s.skuCode}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                    <Input placeholder="Channel" value={newDemand.channel} onChange={(e) => setNewDemand({ ...newDemand, channel: e.target.value })} />
-                    <Input placeholder="State" value={newDemand.state} onChange={(e) => setNewDemand({ ...newDemand, state: e.target.value })} />
+                    
+                    <Select 
+                      value={newDemand.channel && newDemand.state ? `${newDemand.channel}|${newDemand.state}` : ""} 
+                      onValueChange={(v) => {
+                        const [channel, state] = v.split('|')
+                        setNewDemand({ ...newDemand, channel, state })
+                      }}
+                    >
+                      <SelectTrigger className="col-span-2"><SelectValue placeholder="Select DC (Channel - State)" /></SelectTrigger>
+                      <SelectContent>
+                        {store.distributionCenters.map(dc => (
+                          <SelectItem key={dc.id} value={`${dc.channel}|${dc.state}`}>{dc.channel} ({dc.state})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
                     <Input type="number" placeholder="W3 Demand" value={newDemand.demandWeek3 || ""} onChange={(e) => setNewDemand({ ...newDemand, demandWeek3: parseInt(e.target.value) || 0 })} />
                     <Input type="number" placeholder="W4 Demand" value={newDemand.demandWeek4 || ""} onChange={(e) => setNewDemand({ ...newDemand, demandWeek4: parseInt(e.target.value) || 0 })} />
-                    <Button onClick={() => {
-                      if (newDemand.product && newDemand.channel && newDemand.state) {
-                        store.addDemandForecast({ id: Date.now().toString(), ...newDemand })
-                        setNewDemand({ product: "", channel: "", state: "", demandWeek3: 0, demandWeek4: 0 })
-                        showSuccess("Demand added")
-                      }
-                    }}>
-                      <Plus className="h-4 w-4 mr-2" /> Add
-                    </Button>
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    {editingDemandId ? (
+                      <>
+                        <Button onClick={() => {
+                          if (newDemand.product && newDemand.channel && newDemand.state) {
+                            store.updateDemandForecast(editingDemandId, newDemand)
+                            setEditingDemandId(null)
+                            setNewDemand({ product: "", channel: "", state: "", demandWeek3: 0, demandWeek4: 0 })
+                            showSuccess("Demand updated")
+                          }
+                        }}><Check className="h-4 w-4 mr-2" /> Update</Button>
+                        <Button variant="outline" onClick={() => {
+                          setEditingDemandId(null)
+                          setNewDemand({ product: "", channel: "", state: "", demandWeek3: 0, demandWeek4: 0 })
+                        }}><X className="h-4 w-4 mr-2" /> Cancel</Button>
+                      </>
+                    ) : (
+                      <Button onClick={() => {
+                        if (newDemand.product && newDemand.channel && newDemand.state) {
+                          store.addDemandForecast({ id: Date.now().toString(), ...newDemand })
+                          setNewDemand({ product: "", channel: "", state: "", demandWeek3: 0, demandWeek4: 0 })
+                          showSuccess("Demand added")
+                        }
+                      }}><Plus className="h-4 w-4 mr-2" /> Add Demand</Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -842,7 +915,7 @@ export default function PlanningPage() {
                 <CardDescription>Geographic distribution and fulfillment routes</CardDescription>
               </CardHeader>
               <CardContent>
-                {renderMap()}
+                <InteractivePlanningMap links={mapLinks} warehouses={store.warehouses} distributionCenters={store.distributionCenters} selectedWarehouses={store.customerSettings.selectedWarehouses} />
               </CardContent>
             </Card>
           </div>
