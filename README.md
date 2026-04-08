@@ -1,102 +1,251 @@
-# Smart Warehouse Allocation System (3PL Optimization)
+# Smart Warehouse Allocation System
 
-A comprehensive Next.js web application designed to optimize inventory distribution, logistics planning, and shipping routes from warehouses to distribution centers (DCs). The system leverages a custom greedy allocation algorithm to minimize transportation costs by comparing traditional "nearest-neighbor" baseline plans against cost-optimized smart plans.
+A Next.js app for modeling warehouse-to-DC allocation scenarios and comparing a baseline nearest-warehouse plan against a cost-oriented greedy optimization plan.
 
-## Core Features
+## What is implemented
 
-1. **Master Data Management**: Configure Warehouses (locations, capacities), Distribution Centers, SKUs (dimensions, weights), and Carriers (tiered distance rates, vehicle constraints).
-2. **Inventory & Demand Planning**: Track on-hand inventory, future incoming/outgoing schedules, and forecast demand by channel/state.
-3. **Baseline Generation (Customer Plan)**: Quickly generate a baseline allocation based on simple geographic proximity.
-4. **Smart Optimization Engine**: A heuristic solver that assigns demand to the most cost-effective routes while respecting inventory and warehouse capacity constraints.
-5. **Cost Analysis & Visualization**: Deep dive into savings with interactive charts, weekly breakdowns, and granular side-by-side cost comparisons.
-6. **Data Persistence & Import/Export**: State is managed via Zustand and persisted to local storage. Configurations can be exported to JSON/CSV.
+- Master data management for warehouses, distribution centers, SKUs, carriers, rates, and vehicles
+- Planning workflows for inventory, inbound/outbound schedule, demand forecast, and baseline customer allocation
+- Analysis workflow that compares baseline vs smart allocation for Week 3 and Week 4
+- Data import/export tools for JSON configuration plus CSV export for data and analysis results
+- Local persistence with Zustand `persist` so data stays in browser storage
+- Interactive route maps and charts for allocation and cost comparison
 
----
+## Current application structure
+
+- `/` - Master Data
+- `/planning` - Inventory, demand, and customer plan setup
+- `/analysis` - Baseline vs smart plan comparison
+- `/data` - Import, export, reset, and data summary
+- `/single-page` - Alternate single-page layout
 
 ## Detailed System Logic
 
-### 1. Distance & Capacity Calculation
-* **Distance**: System calculates point-to-point distances between Warehouses and Distribution Centers using the **Haversine formula** based on predefined city coordinates.
-* **Container Capacity Limit**: When an SKU and a Vehicle type are selected, the system calculates the maximum units per container. It computes both the **Volume Limit** (Vehicle Max Volume / SKU Volume) and the **Weight Limit** (Vehicle Max Weight / SKU Weight), and takes the **Minimum** of the two as the bottleneck constraint.
+### 1. Distance and coordinate model
 
-### 2. Carrier Rate Tiering
-Carriers are configured with distance-based tiers (e.g., 0-500 miles, 500-1500 miles). The total cost for a shipment is calculated as:
-`Total Cost = Fixed Cost + Max(Minimum Charge, Distance × Rate Per Mile)`
-The system then derives the accurate **Cost Per Unit** by dividing the Total Cost by the calculated Container Capacity Limit.
+- Distances are not pulled from a map API.
+- The app matches known city names from the address string in [`lib/optimizer.ts`](./lib/optimizer.ts).
+- It then applies the Haversine formula and adds a deterministic offset to simulate different street-level locations.
+- If an address cannot be matched, the code falls back to a default distance.
 
-### 3. Inventory Projection
-The system projects available inventory for upcoming weeks (Week 3 & Week 4) by calculating:
-`Projected Inventory = Current On-Hand + Incoming (Up to target week) - Outgoing (Past weeks)`
-Only warehouses selected in the Planning Settings will be considered as having active inventory.
+### 2. Container capacity calculation
 
-### 4. Baseline "Customer" Plan (Nearest Neighbor)
-When generating the baseline plan, the algorithm groups demand forecasts and simply assigns the demand to the **geographically closest active warehouse**. It does not heavily optimize for carrier rate drops or capacity bottlenecks, serving as a realistic "traditional" business model.
+- Items per container are calculated from SKU dimensions and vehicle limits.
+- The constraint is `min(max by volume, max by weight)`.
+- If SKU or vehicle data is not provided to a calculation path, some flows fall back to a legacy default of `1000` items per container.
 
-### 5. Smart Optimization Algorithm (Greedy LP Heuristic)
-The AI-driven optimization runs a heuristic greedy allocation:
-1. **Cost Matrix Generation**: For every demand node, it calculates the *Cost Per Unit* from every active warehouse using the Carrier Rate Tiering logic.
-2. **Sorting**: It sorts all possible allocation routes strictly by *Cost Per Unit* (Lowest to Highest).
-3. **Allocation**: It iterates through the sorted routes, allocating as much demand as possible to the cheapest route.
-4. **Constraint Enforcement**: During allocation, it constantly checks two constraints:
-   * Does the warehouse have enough *Projected Available Inventory*?
-   * Does the warehouse have enough overall *Capacity*?
-5. If a warehouse is depleted, the algorithm moves to the next cheapest route to fulfill the remaining demand.
+### 3. Carrier tier and cost calculation
 
-### 6. Technical Stack
-* **Framework**: Next.js (App Router), React
-* **State Management**: Zustand (with `persist` middleware for local storage)
-* **Styling**: Tailwind CSS, shadcn/ui components
-* **Visualization**: Recharts (Bar charts, Pie charts)
+- Carrier rates are configured by distance bands.
+- Each rate rule includes:
+  - `fixedCost`
+  - `minimumCharge`
+  - `ratePerMile`
+- The effective trip cost is calculated as:
+  - `fixedCost + max(minimumCharge, distance * ratePerMile)`
+- Unit cost is then derived from load capacity.
+- In parts of the UI, a fallback market-rate model is used when carrier, SKU, or vehicle inputs are incomplete.
+
+### 4. Inventory projection
+
+- Available inventory is projected separately for Week 3 and Week 4.
+- The current implementation uses:
+  - Week 3: `onHand + incomingWeek3 - outgoingWeek1 - outgoingWeek2`
+  - Week 4: `onHand + incomingWeek3 + incomingWeek4 - outgoingWeek1 - outgoingWeek2`
+- If the user has selected a subset of warehouses in planning settings, unselected warehouses are treated as having zero available inventory.
+
+### 5. Baseline customer plan generation
+
+- The baseline customer plan is generated by assigning each demand node to the nearest selected warehouse.
+- This happens in `generateCustomerPlan` / `generateCustomerPlanWithDetails`.
+- The baseline is primarily geography-driven and is meant to represent a traditional business allocation approach rather than a fully cost-optimized one.
+
+### 6. Smart optimization algorithm
+
+- The smart plan is a greedy heuristic, not a true LP/MIP solver.
+- For each demand node, the app builds warehouse-route options and sorts them by cost per unit.
+- It allocates demand to the cheapest route first while checking:
+  - projected inventory
+  - warehouse capacity
+- The main implementation lives in `solveLPWithInventory` and `optimizeAllocationForWeek`.
+- It is closer to a rule-based greedy allocator than a mathematically exact optimizer.
+
+## How the current app is organized
+
+- Master data management for warehouses, distribution centers, SKUs, carriers, rates, and vehicles
+- Planning workflows for inventory, inbound/outbound schedule, demand forecast, and baseline customer allocation
+- Analysis workflow that compares baseline vs smart allocation for Week 3 and Week 4
+- Data import/export tools for JSON configuration plus CSV export for data and analysis results
+- Local persistence with Zustand `persist` so data stays in browser storage
+- Interactive route maps and charts for allocation and cost comparison
+
+## Important limitations
+
+- No backend, database, authentication, or server-side persistence
+- No real geocoding or map routing service
+- No CSV import; import is JSON only
+- Default/sample data is bundled in the Zustand store
+- Some UI labels still contain garbled Chinese text caused by encoding issues in source files
+- The repository currently includes both `package-lock.json` and `pnpm-lock.yaml`, and Next.js warns about multiple lockfiles during build
+
+## Tech stack
+
+- Next.js 16 (App Router)
+- React 19
+- TypeScript
+- Zustand
+- Tailwind CSS 4
+- shadcn/ui + Radix UI
+- Recharts
+- Lucide icons
+
+## Getting started
+
+Install dependencies and run the dev server:
+
+```bash
+npm install
+npm run dev
+```
+
+Then open [http://localhost:3000](http://localhost:3000).
+
+## Available scripts
+
+```bash
+npm run dev
+npm run build
+npm run start
+npm run lint
+```
+
+## Current verification status
+
+- `npm run build` succeeds
+- `npm run lint` currently fails because `eslint` is referenced in `package.json` but is not installed in dependencies
+
+## Recommended next documentation updates
+
+- Add screenshots or a short usage walkthrough for the four main pages
+- Document the sample data model and expected JSON import/export shape
+- Clarify that the optimization is heuristic and local-only
+- Either fix the lint setup or remove the script from the README and `package.json`
 
 ---
----
 
-# 智能仓库库存分配与物流优化系统
+# 智能仓储分配系统
 
-这是一个基于 Next.js 开发的综合性 Web 应用程序，旨在优化库存分配、物流计划以及从仓库到配送中心（DC）的运输路线。系统利用自定义的贪心分配算法，通过将传统的“就近分配”基准计划与成本优化的“智能计划”进行对比，从而实现运输成本的最小化。
+这是一个基于 Next.js 的仓储分配与物流分析应用，用来模拟仓库到配送中心的分配方案，并对比“最近仓基准方案”和“成本导向的智能方案”。
 
-## 核心功能
+## 当前已实现的功能
 
-1. **基础数据管理 (Master Data)**：配置仓库（位置、总容量）、配送中心、产品 SKU（尺寸、重量）以及承运商（基于距离的阶梯运费、车辆限制）。
-2. **库存与需求计划 (Planning)**：追踪现有库存、未来的收发货计划，并按渠道/州预测未来几周的客户需求。
-3. **基准方案生成 (Customer Plan)**：基于简单的地理距离（就近原则）快速生成基准分配计划。
-4. **智能优化引擎 (Smart Optimization)**：一种启发式求解器，在严格遵守库存上限和仓库容量限制的前提下，将需求分配给最具成本效益的路线。
-5. **成本分析与可视化 (Analysis)**：通过交互式图表、周度细分饼图和细粒度的并排成本对比表，深入分析节省的成本。
-6. **数据持久化与导入/导出 (Data Management)**：通过 Zustand 管理状态并持久化至浏览器本地存储。配置数据可导出为 JSON/CSV 格式。
+- 仓库、配送中心、SKU、承运商、费率、车辆等主数据管理
+- 库存、收发货计划、需求预测、客户基准分配方案的规划流程
+- 第 3 周和第 4 周的基准方案与智能方案对比分析
+- JSON 配置导入导出，以及数据和分析结果的 CSV 导出
+- 基于 Zustand `persist` 的浏览器本地持久化
+- 交互式路线地图和成本分析图表
 
----
+## 当前页面结构
 
-## 详细系统逻辑
+- `/` - 主数据管理
+- `/planning` - 库存、需求与客户方案配置
+- `/analysis` - 基准方案与智能方案对比分析
+- `/data` - 导入、导出、重置与数据汇总
+- `/single-page` - 单页模式布局
 
-### 1. 距离与装载量计算
-* **距离计算**：系统基于预设的城市经纬度坐标，使用 **哈弗曼公式 (Haversine Formula)** 计算仓库与配送中心之间的点对点直线里程距离。
-* **容器容量限制**：当选择了特定的 SKU 和车辆类型时，系统会自动计算单个集装箱/卡车的最大装载量。系统会分别计算 **体积限制** (车辆最大容积 / SKU体积) 和 **重量限制** (车辆最大载重 / SKU重量)，并取两者的 **最小值 (Minimum)** 作为最终的物理装载瓶颈。
+## Detailed System Logic 中文版
 
-### 2. 承运商阶梯计费逻辑
-承运商可以配置基于距离的阶梯运费（例如：0-500英里一个费率，500-1500英里一个费率）。单次运输的总成本计算公式为：
-`单车总成本 = 固定发车费 + Max(最低起运收费, 运输距离 × 每英里单价)`
-随后，系统会将“单车总成本”除以“计算出的最大装载量”，推导出极其精准的 **单件运输成本 (Cost Per Unit)**。
+### 1. 距离与坐标模型
 
-### 3. 动态库存预测
-系统会根据当前和未来的调度，动态预测目标周（第3周或第4周）的可用库存：
-`预测可用库存 = 当前现有库存 + 计划入库数量 (截至目标周) - 计划出库数量 (历史周)`
-在规划设置中，只有被用户勾选激活的仓库才会被视为具有有效库存。
+- 系统没有接入真实地图 API。
+- 地址会先在 [`lib/optimizer.ts`](./lib/optimizer.ts) 中按城市关键字匹配预设坐标。
+- 然后使用 Haversine 公式计算两点距离，并叠加一个固定的伪随机偏移量，模拟街道级差异。
+- 如果地址无法匹配到坐标，代码会回退到默认距离。
 
-### 4. 传统基准方案生成 (就近原则)
-在生成基准计划（Customer Plan）时，算法会将需求按地点分组，并简单地将需求分配给 **地理位置上距离最近的激活仓库**。该逻辑不考虑承运商费率陡降或仓库容量瓶颈，旨在模拟企业最常见、最传统的粗放型物流分配业务模型。
+### 2. 单车装载量计算
 
-### 5. 智能优化算法 (贪心线性启发式求解)
-AI 驱动的优化过程运行了一套启发式贪心分配算法：
-1. **成本矩阵生成**：遍历所有的需求节点，利用承运商阶梯计费逻辑，计算出从每一个激活仓库发货的 *单件运输成本*。
-2. **全局排序**：将所有可能的“仓库-需求地”分配路线，严格按照 *单件运输成本* 从低到高进行全局排序。
-3. **优先分配**：遍历排好序的路线，尽可能多地将需求分配给当前最便宜的路线。
-4. **双重约束校验**：在分配时，系统会实时校验两个物理约束：
-   * 该仓库是否有足够的 *预测可用库存*？
-   * 该仓库是否还有剩余的 *整体仓储容量*？
-5. 如果最便宜的仓库库存被耗尽，算法会自动退而求其次，寻找下一个最便宜的路线来满足剩余的未分配需求。
+- 单车可装载件数由 SKU 尺寸和车辆容量共同决定。
+- 计算逻辑是 `min(体积上限, 重量上限)`。
+- 如果某条计算链路没有传入 SKU 或车辆数据，部分流程会回退到历史默认值 `1000` 件/车。
 
-### 6. 技术栈
-* **框架**: Next.js (App Router), React
-* **状态管理**: Zustand (配合 `persist` 中间件实现本地持久化)
-* **样式 UI**: Tailwind CSS, shadcn/ui 组件库
-* **数据可视化**: Recharts (柱状图, 饼图)
+### 3. 承运商阶梯费率与成本计算
+
+- 承运商费率按距离区间配置。
+- 每条费率规则包含：
+  - `fixedCost`
+  - `minimumCharge`
+  - `ratePerMile`
+- 单次运输成本计算公式为：
+  - `fixedCost + max(minimumCharge, distance * ratePerMile)`
+- 再根据单车装载量推导出单位运输成本。
+- 如果承运商、SKU 或车辆信息不完整，部分页面会退回到市场均价模型。
+
+### 4. 库存预测
+
+- 系统分别计算第 3 周和第 4 周的可用库存。
+- 当前实现逻辑为：
+  - 第 3 周：`现有库存 + 第3周入库 - 第1周出库 - 第2周出库`
+  - 第 4 周：`现有库存 + 第3周入库 + 第4周入库 - 第1周出库 - 第2周出库`
+- 如果用户在规划设置里只勾选了部分仓库，则未勾选仓库会被视为无可用库存。
+
+### 5. 基准客户方案生成
+
+- 基准客户方案会把每个需求点分配给最近的已选仓库。
+- 对应实现位于 `generateCustomerPlan` 和 `generateCustomerPlanWithDetails`。
+- 这个方案更接近传统“就近发货”的业务规则，不是严格的成本最优方案。
+
+### 6. 智能优化算法
+
+- 智能方案使用的是贪心启发式算法，不是真正的 LP/MIP 优化器。
+- 对每个需求点，系统会先生成所有可选仓库路线，并按单位成本排序。
+- 然后优先分配到最便宜的路线，同时检查：
+  - 预测库存
+  - 仓库容量
+- 主要实现位于 `solveLPWithInventory` 和 `optimizeAllocationForWeek`。
+- 它本质上更接近规则驱动的 greedy allocator，而不是精确数学优化求解器。
+
+## 当前实现边界
+
+- 没有后端、数据库、登录认证或服务端持久化
+- 没有真实地理编码或真实地图路径规划
+- 不支持 CSV 导入，目前只支持 JSON 导入
+- 默认示例数据直接内置在 Zustand store 中
+- 源码里还有部分中文文案存在乱码
+- 仓库里同时存在 `package-lock.json` 和 `pnpm-lock.yaml`，构建时 Next.js 会提示多锁文件警告
+
+## 技术栈
+
+- Next.js 16（App Router）
+- React 19
+- TypeScript
+- Zustand
+- Tailwind CSS 4
+- shadcn/ui + Radix UI
+- Recharts
+- Lucide Icons
+
+## 启动方式
+
+安装依赖并启动开发环境：
+
+```bash
+npm install
+npm run dev
+```
+
+然后访问 [http://localhost:3000](http://localhost:3000)。
+
+## 可用脚本
+
+```bash
+npm run dev
+npm run build
+npm run start
+npm run lint
+```
+
+## 当前验证结果
+
+- `npm run build` 可以成功执行
+- `npm run lint` 当前会失败，因为 `package.json` 中声明了该脚本，但项目依赖里没有安装 `eslint`
